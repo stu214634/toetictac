@@ -1,16 +1,11 @@
-mod cursor;
-mod game;
-
-use core::time;
-use std::{
-    io::{self, stdin, stdout, Read, Write},
-    thread::sleep,
-    time::Duration,
-};
+use std::io::{self, Read, stdout, Write};
 
 use game::Game;
 
 use crate::cursor::*;
+
+mod cursor;
+mod game;
 
 const FIELD_SIZE: usize = 4usize;
 const ANNOTATIONS: [(&str, usize, usize, u16); 9] = [
@@ -100,9 +95,9 @@ fn request_input(message: &str) -> String {
     clear_line(Some(INPUT_LINE));
     print!("{}", message);
     let _ = stdout().flush();
-    let mut buf = [0; 256];
-    let _ = stdin().read(&mut buf);
-    String::from_utf8(buf.to_vec()).unwrap_or("NO_PARSE".to_string())
+    let mut name = String::new();
+    io::stdin().read_line(&mut name).unwrap();
+    return name.trim().to_string();
 }
 
 fn draw_x() {}
