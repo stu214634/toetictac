@@ -1,4 +1,7 @@
-use std::io::{self, Read, stdout, Write};
+use std::{
+    io::{self, stdout, Read, Write},
+    sync::Mutex,
+};
 
 use game::Game;
 
@@ -7,7 +10,7 @@ use crate::cursor::*;
 mod cursor;
 mod game;
 
-const FIELD_SIZE: usize = 4usize;
+const FIELD_SIZE: usize = 5usize;
 const ANNOTATIONS: [(&str, usize, usize, u16); 9] = [
     ("tl", 0, 0, 0b100_000_000),
     ("t", 1, 0, 0b010_000_000),
@@ -20,11 +23,11 @@ const ANNOTATIONS: [(&str, usize, usize, u16); 9] = [
     ("br", 2, 2, 0b000_000_001),
 ];
 const ANNOUNCEMENT_LINES: usize = 3usize;
-static mut ANNOUNCEMENT_BUFFER: Vec<String> = Vec::new();
+static ANNOUNCEMENT_BUFFER: Mutex<Vec<String>> = Mutex::new(Vec::new());
 const INPUT_LINE: usize = 3 * FIELD_SIZE + ANNOUNCEMENT_LINES + 5;
 
 fn main() {
-    unsafe { announce("Welcome") };
+    announce("Welcome");
     loop {
         let mut game = Game::new();
         game.visible = true;
@@ -45,10 +48,10 @@ fn drawline() {
 }
 
 fn draw_board(clear: bool) {
-    unsafe { announce("drawing board") };
+    announce("drawing board");
     const FIELD_SIZE_DOUBLE: usize = FIELD_SIZE * 2;
     if clear {
-        unsafe { announce("clearing board") };
+        announce("clearing board");
         move_to_field(0, 0);
         for i in 0..(FIELD_SIZE * 3) {
             clear_line(Some(i));
@@ -71,17 +74,18 @@ fn draw_board(clear: bool) {
         print!("{}", label);
     }
     let _ = stdout().flush();
-    unsafe { announce("board drawn") };
+    announce("board drawn");
 }
 
-unsafe fn announce(message: &str) {
+fn announce(message: &str) {
     hide_cursor();
     let _ = stdout().flush();
-    if ANNOUNCEMENT_BUFFER.len() == ANNOUNCEMENT_LINES {
-        ANNOUNCEMENT_BUFFER.remove(0);
+    let mut buffer = ANNOUNCEMENT_BUFFER.lock().unwrap();
+    if buffer.len() == ANNOUNCEMENT_LINES {
+        buffer.remove(0);
     }
-    ANNOUNCEMENT_BUFFER.push(message.to_string());
-    for (i, announcement) in ANNOUNCEMENT_BUFFER.iter().enumerate() {
+    buffer.push(message.to_string());
+    for (i, announcement) in buffer.iter().enumerate() {
         clear_line(Some(FIELD_SIZE * 3 + i));
         move_down(ANNOUNCEMENT_LINES);
         clear_line(None);
@@ -100,6 +104,30 @@ fn request_input(message: &str) -> String {
     return name.trim().to_string();
 }
 
-fn draw_x() {}
+fn draw_x() {
+    for y in 1..FIELD_SIZE {
+        move_right(y * 2 - 1);
+        print!("\\_");
+        move_left((y * 2) + 1);
+        move_right(FIELD_SIZE * 2 - y * 2 - 1);
+        print!("_/");
+        move_down(1);
+        move_left(FIELD_SIZE * 2 - y * 2 + 1);
+    }
+    let _ = stdout().flush();
+}
 
-fn draw_o() {}
+fn draw_o() {
+    move_right(FIELD_SIZE - (FIELD_SIZE + 1) / 2);
+    print!("{}", "-".repeat(FIELD_SIZE + 1));
+    move_left(FIELD_SIZE + 2);
+    for _ in 1..(FIELD_SIZE - 2) {
+        move_down(1);
+        print!("|{}|", " ".repeat(FIELD_SIZE + 1));
+        move_left(FIELD_SIZE + 3);
+    }
+    move_down(1);
+    move_right(1);
+    print!("{}", "-".repeat(FIELD_SIZE + 1));
+    let _ = stdout().flush();
+}

@@ -11,6 +11,8 @@ const WINNING_BOARDS: [u16; 8] = [
     0b001_010_100,
 ];
 
+const DRAW_BOARD: u16 = 0b111_111_111;
+
 pub struct Game {
     pub visible: bool,
     xs: u16,
@@ -55,51 +57,54 @@ impl Game {
 
     pub fn play_game(&mut self) {
         self.start();
-        let x_won = WINNING_BOARDS.contains(&self.xs);
-        let o_won = WINNING_BOARDS.contains(&self.os);
-        if x_won | o_won {
-            unsafe { announce(&format!("{} has won!", if x_won { "X" } else { "O" })) };
-            let mut play_again;
-            loop {
-                play_again = request_input("Play again? [y/n]:");
-                match play_again.as_str() {
-                    "y" => {
-                        self.rematch = true;
-                        return;
-                    }
-                    "n" => std::process::exit(100),
-                    _ => (),
+        loop {
+            let x_won = WINNING_BOARDS.into_iter().any(|e| e & self.xs == e);
+            let o_won = WINNING_BOARDS.into_iter().any(|e| e & self.os == e);
+            if x_won | o_won | (self.xs | self.os == DRAW_BOARD) {
+                if x_won {
+                    announce("X has won!");
+                } else if o_won {
+                    announce("O has won!");
+                } else {
+                    announce("Draw!");
                 }
-                unsafe {
+                let mut play_again;
+                loop {
+                    play_again = request_input("Play again? [y/n]:");
+                    match play_again.as_str() {
+                        "y" => {
+                            self.rematch = true;
+                            return;
+                        }
+                        "n" => std::process::exit(100),
+                        _ => (),
+                    }
                     announce(&format!(
                         "Invalid input: {} please choose [y/n]:",
                         play_again
-                    ))
-                };
+                    ));
+                }
             }
-        }
-        loop {
             let move_input: String = request_input("Enter a field to play:").trim().to_string();
             let read_move = ANNOTATIONS.into_iter().find(|e| e.0 == move_input);
             if let Some((_, x, y, code)) = read_move {
-                if (self.valid_moves() | code) == self.valid_moves() {
-                    unsafe { announce("Move was invalid!") };
+                if (self.valid_moves() & code) == 0 {
+                    announce("Move was invalid!");
                     continue;
                 }
                 move_to_field(x, y);
-                self.make_move(code);
                 if self.x_turn {
                     draw_x();
                 } else {
                     draw_o();
                 }
+                self.make_move(code);
+                continue;
             }
-            unsafe {
-                announce(&format!(
-                    "Move {} could not be parsed. Enter one of the field labels.",
-                    move_input
-                ))
-            };
+            announce(&format!(
+                "Move {} could not be parsed. Enter one of the field labels.",
+                move_input
+            ));
         }
     }
 }
