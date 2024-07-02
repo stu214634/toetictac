@@ -1,5 +1,3 @@
-use std::io::{stdin, Read};
-
 use crate::FIELD_SIZE;
 
 pub fn _move_up(c: usize) {

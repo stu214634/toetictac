@@ -1,6 +1,8 @@
-use std::any;
+use rand::seq::SliceRandom;
 
 use crate::{announce, draw_board, draw_o, draw_x, move_to_field, request_input, ANNOTATIONS};
+
+const BRAINS: [&str; 3] = ["Perfect", "Human", "Random"];
 
 const WINNING_BOARDS: [u16; 8] = [
     0b000_000_111,
@@ -137,17 +139,16 @@ impl Game {
             draw_o();
         }
     }
-    fn human_move(&mut self) -> u16 {
+
+    fn human_move(&self) -> u16 {
         loop {
             let move_input: String = request_input("Enter a field to play:");
             let read_move = ANNOTATIONS.into_iter().find(|e| e.0 == move_input);
-            if let Some((_, x, y, code)) = read_move {
+            if let Some((_, _, _, code)) = read_move {
                 if (self.valid_moves() & code) == 0 {
                     announce("Move was invalid!");
                     continue;
                 }
-                self.draw_move(x, y);
-                self.make_move(code);
                 return code;
             }
             announce(&format!(
@@ -156,35 +157,76 @@ impl Game {
             ));
         }
     }
+
+    fn choose_brain(&mut self) -> Box<dyn Brain> {
+        loop {
+            self.against_ai = true;
+            let brain_input: String = request_input(&format!("Choose an AI {:?}: ", BRAINS));
+            match brain_input.as_str() {
+                "Perfect" => return Box::new(GameTree::from_game(self.clone())),
+                "Random" => return Box::new(RandomBrain {}),
+                "Human" => {
+                    self.against_ai = false;
+                    return Box::new(GameTree::from_game(self.clone()));
+                }
+                _ => {
+                    announce(&format!(
+                        "Brain {} could not be parsed. Enter one of {:?}",
+                        brain_input, BRAINS
+                    ));
+                }
+            }
+        }
+    }
+
     pub fn play_game(&mut self) {
         self.start();
-        let mut game_tree: &GameTree = &GameTree::from_game(self.clone());
+        let mut brain = &*self.choose_brain();
         loop {
-            let m = self.human_move();
-            let mut game_over = self.game_over();
-            if game_over.0 {
-                self.announce_game_over(game_over.1, game_over.2);
-                return;
-            }
-            game_tree = &game_tree.children.iter().find(|c| c.1 == m).unwrap().0;
-            if !self.against_ai {
-                continue;
-            }
-            let ai_m = game_tree.best_move();
-            let (label, x, y, _) = ANNOTATIONS.into_iter().find(|c| c.3 == ai_m.1).unwrap();
+            let human_move = !self.against_ai || (self.ai_plays_x ^ self.x_turn);
+            let m = if human_move {
+                self.human_move()
+            } else {
+                brain.best_move(self)
+            };
+            let (label, x, y, _) = ANNOTATIONS.into_iter().find(|c| c.3 == m).unwrap();
             self.draw_move(x, y);
-            self.make_move(ai_m.1);
-            game_tree = &ai_m.0;
-            announce(&format!("AI has made move: {}", label));
-            game_over = self.game_over();
-            if game_over.0 {
-                self.announce_game_over(game_over.1, game_over.2);
+            self.make_move(m);
+            brain = brain.advance(m);
+            if !human_move {
+                announce(&format!("AI has made move: {}", label));
+            }
+            let (over, x_won, o_won) = self.game_over();
+            if over {
+                self.announce_game_over(x_won, o_won);
                 return;
             }
         }
     }
 }
 
+pub trait Brain {
+    fn best_move(&self, game: &Game) -> u16;
+    fn advance(&self, m: u16) -> &dyn Brain;
+}
+
+#[derive(Clone)]
+struct RandomBrain {}
+
+impl Brain for RandomBrain {
+    fn best_move(&self, game: &Game) -> u16 {
+        *game
+            .valid_moves_vec()
+            .choose(&mut rand::thread_rng())
+            .unwrap()
+    }
+
+    fn advance(&self, _m: u16) -> &dyn Brain {
+        self
+    }
+}
+
+#[derive(Clone)]
 struct GameTree {
     x_inevitable: bool,
     o_inevitable: bool,
@@ -229,21 +271,41 @@ impl GameTree {
             children,
         }
     }
+}
 
-    pub fn best_move(&self) -> &(GameTree, u16) {
+impl Brain for GameTree {
+    fn best_move(&self, _game: &Game) -> u16 {
         let for_x = self.root.x_turn;
         if for_x {
             if let Some(wins) = self.children.iter().find(|c| c.0.x_inevitable) {
-                wins
+                announce("Found Win");
+                wins.1
             } else {
-                self.children.iter().find(|c| !c.0.o_inevitable).unwrap()
+                announce("Random move");
+                let non_losing: Vec<u16> = self
+                    .children
+                    .iter()
+                    .filter(|c| !c.0.o_inevitable)
+                    .map(|c| c.1)
+                    .collect();
+                *non_losing.choose(&mut rand::thread_rng()).unwrap()
             }
         } else if let Some(wins) = self.children.iter().find(|c| c.0.o_inevitable) {
             announce("Found Win");
-            wins
+            wins.1
         } else {
             announce("Random move");
-            self.children.iter().find(|c| !c.0.x_inevitable).unwrap()
+            let non_losing: Vec<u16> = self
+                .children
+                .iter()
+                .filter(|c| !c.0.x_inevitable)
+                .map(|c| c.1)
+                .collect();
+            *non_losing.choose(&mut rand::thread_rng()).unwrap()
         }
+    }
+
+    fn advance(&self, m: u16) -> &dyn Brain {
+        &self.children.iter().find(|c| c.1 == m).unwrap().0
     }
 }
