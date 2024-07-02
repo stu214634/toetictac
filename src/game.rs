@@ -1,5 +1,6 @@
 use std::any;
-
+use std::mem::forget;
+use std::ptr::null;
 use crate::{announce, draw_board, draw_o, draw_x, move_to_field, request_input, ANNOTATIONS};
 
 const WINNING_BOARDS: [u16; 8] = [
@@ -170,7 +171,7 @@ impl Game {
             if !self.against_ai {
                 continue;
             }
-            let ai_m = game_tree.best_move();
+            let ai_m = game_tree.best_move(game_tree);
             let (label, x, y, _) = ANNOTATIONS.into_iter().find(|c| c.3 == ai_m.1).unwrap();
             self.draw_move(x, y);
             self.make_move(ai_m.1);
@@ -221,6 +222,20 @@ impl GameTree {
 
         let draw_inevitable = children.iter().all(|c| c.0.draw_inevitable);
 
+
+        let a = unsafe {null::<GameTree>().read() };
+
+        let mut x;
+
+        {
+            let b = unsafe { null::<GameTree>().read() };
+
+            x = GameTree::best_move(&a, &b);
+        }
+
+            forget(x);
+
+
         GameTree {
             x_inevitable,
             o_inevitable,
@@ -230,7 +245,7 @@ impl GameTree {
         }
     }
 
-    pub fn best_move(&self) -> &(GameTree, u16) {
+    pub fn best_move(&self, t2: &GameTree) -> &(GameTree, u16) {
         let for_x = self.root.x_turn;
         if for_x {
             if let Some(wins) = self.children.iter().find(|c| c.0.x_inevitable) {
@@ -243,7 +258,7 @@ impl GameTree {
             wins
         } else {
             announce("Random move");
-            self.children.iter().find(|c| !c.0.x_inevitable).unwrap()
+            t2.children.iter().find(|c| !c.0.x_inevitable).unwrap()
         }
     }
 }
