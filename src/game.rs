@@ -1,3 +1,5 @@
+use std::{thread::sleep, time::Duration};
+
 use rand::seq::SliceRandom;
 
 use crate::{announce, draw_board, draw_o, draw_x, move_to_field, request_input, ANNOTATIONS};
@@ -23,19 +25,17 @@ pub struct Game {
     os: u16,
     x_turn: bool,
     rematch: bool,
-    against_ai: bool,
-    ai_plays_x: bool,
+    has_human: bool,
 }
 
 impl Game {
-    pub fn new(against_ai: bool) -> Game {
+    pub fn new() -> Game {
         Game {
             xs: 0,
             os: 0,
             x_turn: true,
             rematch: false,
-            against_ai,
-            ai_plays_x: false,
+            has_human: false,
         }
     }
 
@@ -45,8 +45,7 @@ impl Game {
             os: self.os,
             x_turn: self.x_turn,
             rematch: false,
-            against_ai: self.against_ai,
-            ai_plays_x: self.ai_plays_x,
+            has_human: self.has_human,
         };
         game.make_move(m);
         game
@@ -57,7 +56,7 @@ impl Game {
         self.os = 0;
         self.x_turn = true;
         self.rematch = false;
-        self.ai_plays_x = !self.ai_plays_x;
+        self.has_human = false;
         draw_board(true);
     }
 
@@ -160,14 +159,13 @@ impl Game {
 
     fn choose_brain(&mut self) -> Box<dyn Brain> {
         loop {
-            self.against_ai = true;
             let brain_input: String = request_input(&format!("Choose an AI {:?}: ", BRAINS));
             match brain_input.as_str() {
                 "Perfect" => return Box::new(GameTree::from_game(self.clone())),
                 "Random" => return Box::new(RandomBrain {}),
                 "Human" => {
-                    self.against_ai = false;
-                    return Box::new(GameTree::from_game(self.clone()));
+                    self.has_human = true;
+                    return Box::new(HumanBrain {});
                 }
                 _ => {
                     announce(&format!(
@@ -181,25 +179,28 @@ impl Game {
 
     pub fn play_game(&mut self) {
         self.start();
-        let mut brain = &*self.choose_brain();
+        let mut x_brain = &*self.choose_brain();
+        let mut o_brain = &*self.choose_brain();
         loop {
-            let human_move = !self.against_ai || (self.ai_plays_x ^ self.x_turn);
-            let m = if human_move {
-                self.human_move()
+            let m = if self.x_turn {
+                x_brain.best_move(self)
             } else {
-                brain.best_move(self)
+                o_brain.best_move(self)
             };
             let (label, x, y, _) = ANNOTATIONS.into_iter().find(|c| c.3 == m).unwrap();
             self.draw_move(x, y);
             self.make_move(m);
-            brain = brain.advance(m);
-            if !human_move {
-                announce(&format!("AI has made move: {}", label));
-            }
+            x_brain = x_brain.advance(m);
+            o_brain = o_brain.advance(m);
+            announce(&format!("Moved: {}", label));
             let (over, x_won, o_won) = self.game_over();
             if over {
                 self.announce_game_over(x_won, o_won);
                 return;
+            }
+            if !self.has_human {
+                let dur = Duration::from_secs(1);
+                sleep(dur);
             }
         }
     }
@@ -211,7 +212,7 @@ pub trait Brain {
 }
 
 #[derive(Clone)]
-struct RandomBrain {}
+struct RandomBrain;
 
 impl Brain for RandomBrain {
     fn best_move(&self, game: &Game) -> u16 {
@@ -219,6 +220,17 @@ impl Brain for RandomBrain {
             .valid_moves_vec()
             .choose(&mut rand::thread_rng())
             .unwrap()
+    }
+
+    fn advance(&self, _m: u16) -> &dyn Brain {
+        self
+    }
+}
+
+struct HumanBrain;
+impl Brain for HumanBrain {
+    fn best_move(&self, game: &Game) -> u16 {
+        game.human_move()
     }
 
     fn advance(&self, _m: u16) -> &dyn Brain {
