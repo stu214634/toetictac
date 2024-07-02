@@ -26,16 +26,20 @@ const ANNOUNCEMENT_LINES: usize = 3usize;
 static ANNOUNCEMENT_BUFFER: Mutex<Vec<String>> = Mutex::new(Vec::new());
 const INPUT_LINE: usize = 3 * FIELD_SIZE + ANNOUNCEMENT_LINES + 5;
 
-fn main() {
-    announce("Welcome");
+fn ask_for_ai() -> bool {
     loop {
-        let mut game = Game::new();
-        game.visible = true;
-        game.play_game();
-        if !game.rematch {
-            break;
+        match request_input("Play against computer? [y/n]:").as_str() {
+            "y" => return true,
+            "n" => return false,
+            _ => announce("Invalid Input. Choose [y/n]"),
         }
     }
+}
+
+fn main() {
+    announce("Welcome");
+    let mut game = Game::new(ask_for_ai());
+    game.play_games();
 }
 
 fn drawline() {
